@@ -26,7 +26,13 @@ begin
    Power.Add_Term ("High",   Create_Slope_Right (60.0, 80.0));
    Eng.Add_Output (Power);
 
-   Temperature.Set_Value (15.0);
+   Eng.Add_Rule_Block
+      (Name   => "Rules 1",
+       Rules  => (Implies (Temperature = "Cold", Power = "High"),
+                  Implies (Temperature = "Medium", Power = "Medium"),
+                  Implies (Temperature = "Hot", Power = "Low")));
+
+   Temperature.Set_Value (14.0);
    Eng.Process;
    Put_Line (Power.Get_Value'Img);
 
