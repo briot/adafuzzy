@@ -1,7 +1,9 @@
 with Fuzzy;
-with Ada.Text_IO;   use Ada.Text_IO;
+with GNATCOLL.Traces;   use GNATCOLL.Traces;
 
 procedure Example is
+   Me : constant Trace_Handle := Create ("FUZZY");
+
    package Fuzzys is new Fuzzy (Scalar => Float, Base_Membership => Float);
    use Fuzzys;
 
@@ -10,6 +12,8 @@ procedure Example is
    Eng         : Engine;
 
 begin
+   GNATCOLL.Traces.Parse_Config_File;
+
    Temperature := new Input_Variable;
    Temperature.Set_Name ("Temperature");
    Temperature.Set_Range (-30.0, 50.0);
@@ -32,13 +36,16 @@ begin
                   Implies (Temperature = "Medium", Power = "Medium"),
                   Implies (Temperature = "Hot", Power = "Low")));
 
+   Trace (Me, Eng);
+
    Temperature.Set_Value (14.0);
 
-   loop
-      Put_Line ("-----------------------------------------");
-      Put_Line ("Temperature=" & Temperature.Get_Value'Img);
+   for Iterate in 1 .. 100_000 loop
       Eng.Process;
-      Put_Line ("Result => Power is set to" & Power.Get_Value'Img);
+
+      --  Put_Line ("-----------------------------------------");
+      --  Put_Line ("Temperature=" & Temperature.Get_Value'Img);
+      --  Put_Line ("Result => Power is set to" & Power.Get_Value'Img);
 
       --  Simulate the effect of the power
       --  100% power => +0.5 degree

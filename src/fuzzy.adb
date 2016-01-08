@@ -1,8 +1,15 @@
 with Ada.Containers;   use Ada.Containers;
-with Ada.Text_IO;      use Ada.Text_IO;
 with Ada.Unchecked_Deallocation;
 
 package body Fuzzy is
+   Me : constant Trace_Handle := Create ("FUZZY");
+
+   Debug : constant Boolean := True;
+   --  Whether to enable debug traces.
+   --  If you set this to True, you also need to enable the traces by calling
+   --  GNATCOLL.Traces.Parse_Config_File and create an appropriate config
+   --  file. Disabling the traces provides a performance gain even when
+   --  nothing is printed.
 
    type Triangle is new Membership_Function with record
       Lower, Max, Higher : Scalar;
@@ -595,6 +602,55 @@ package body Fuzzy is
       end loop;
    end Freeze;
 
+   -----------
+   -- Trace --
+   -----------
+
+   procedure Trace (Me : Trace_Handle; Self : Engine) is
+      Debug : Unbounded_String;
+      R     : Rule_Block;
+   begin
+      if Active (Me) then
+         Increase_Indent (Me, "Input variables:");
+         for V of Self.Inputs loop
+            Debug := V.Name;
+            for T of V.Terms loop
+               Append (Debug, " " & T.Name & " (in"
+                  & T.In_Rules'Img & " rules, idx="
+                  & T.Idx'Img & ")");
+            end loop;
+            Trace (Me, To_String (Debug));
+         end loop;
+         Decrease_Indent (Me);
+
+         Increase_Indent (Me, "Output variables");
+         for V of Self.Outputs loop
+            Debug := V.Name;
+            for T of V.Terms loop
+               Append (Debug, " " & T.Name & " ("
+                  & T.In_Rules'Img & " rules)");
+            end loop;
+            Trace (Me, To_String (Debug));
+         end loop;
+         Decrease_Indent (Me);
+
+         R := Self.Rules;
+         while R /= null loop
+            Increase_Indent (Me, "Rule block " & To_String (R.Name));
+            for U in R.Left'Range (1) loop
+               Debug := To_Unbounded_String
+                  ("rule" & U'Img & " antecedents idx=");
+               for V in R.Left'Range (2) loop
+                  Append (Debug, R.Left (U, V).Fuzzy_Value'Img);
+               end loop;
+               Trace (Me, To_String (Debug));
+            end loop;
+            Decrease_Indent (Me);
+            R := R.Next;
+         end loop;
+      end if;
+   end Trace;
+
    --------------------
    -- Add_Rule_Block --
    --------------------
@@ -723,40 +779,6 @@ package body Fuzzy is
          end loop;
       end loop;
 
-      Put_Line ("Inputs:");
-      for V of Self.Inputs loop
-         Put_Line ("  " & To_String (V.Name));
-         for T of V.Terms loop
-            Put_Line ("    " & To_String (T.Name) & " (rules:"
-               & T.In_Rules'Img & ") (idx=" & T.Idx'Img & ")");
-         end loop;
-      end loop;
-
-      Put_Line ("Outputs:");
-      for V of Self.Outputs loop
-         Put_Line ("  " & To_String (V.Name));
-         for T of V.Terms loop
-            Put_Line ("    " & To_String (T.Name) & " (rules:"
-               & T.In_Rules'Img & ")");
-         end loop;
-      end loop;
-
-      declare
-         R : Rule_Block := Self.Rules;
-      begin
-         while R /= null loop
-            Put_Line ("Rules: " & To_String (R.Name));
-            for U in R.Left'Range (1) loop
-               Put ("  indexes=");
-               for V in R.Left'Range (2) loop
-                  Put (R.Left (U, V).Fuzzy_Value'Img);
-               end loop;
-               New_Line;
-            end loop;
-            R := R.Next;
-         end loop;
-      end;
-
       --  ??? Must free the rules
    end Add_Rule_Block;
 
@@ -820,16 +842,6 @@ package body Fuzzy is
                end if;
             end loop;
          end loop;
-
-         Put_Line ("Fuzzify input vars:");
-         Put (" ");
-         for V of Self.Inputs loop
-            Put (To_String (V.Name) & " =");
-            for T of V.Terms loop
-               Put (Vars (T.Idx)'Img & "/" & To_String (T.Name));
-            end loop;
-            New_Line;
-         end loop;
       end Fuzzify;
 
       --------------
@@ -860,20 +872,12 @@ package body Fuzzy is
                      end if;
                   end loop;
 
-                  M := M * B.Weights (R);
-                  Rule_Levels (R_Idx) := M;
+                  Rule_Levels (R_Idx) := M * B.Weights (R);
                   R_Idx := R_Idx + 1;
                end loop;
             end if;
             B := B.Next;
          end loop;
-
-         Put_Line ("Rule activation levels:");
-         Put (" ");
-         for R of Rule_Levels loop
-            Put (R'Img);
-         end loop;
-         New_Line;
       end Activate;
 
       ------------------------------
@@ -920,22 +924,40 @@ package body Fuzzy is
 
             Accumulated.Free;
          end loop;
-
-         Put_Line ("Output variables:");
-         for V of Self.Outputs loop
-            Put_Line ("  " & To_String (V.Name) & " =" & V.Value'Img);
-         end loop;
       end Accumulate_And_Defuzzify;
 
    begin
-      Put_Line ("Input variables:");
-      for V of Self.Inputs loop
-         Put_Line ("  " & To_String (V.Name) & " value=" & V.Value'Img);
-      end loop;
-
       Fuzzify;
       Activate;
       Accumulate_And_Defuzzify;
+
+      if Debug and then Active (Me) then
+         declare
+            Debug : Unbounded_String;
+         begin
+            Increase_Indent (Me, "Process");
+            for V of Self.Inputs loop
+               Debug := V.Name & " value="
+                  & V.Value'Img & " fuzzy=";
+               for T of V.Terms loop
+                  Append (Debug, Vars (T.Idx)'Img & "/" & T.Name);
+               end loop;
+               Trace (Me, To_String (Debug));
+            end loop;
+
+            Debug := To_Unbounded_String ("Rule activation:");
+            for R of Rule_Levels loop
+               Append (Debug, R'Img);
+            end loop;
+            Trace (Me, To_String (Debug));
+
+            for V of Self.Outputs loop
+               Trace (Me, To_String (V.Name) & " value=" & V.Value'Img);
+            end loop;
+
+            Decrease_Indent (Me);
+         end;
+      end if;
    end Process;
 
 end Fuzzy;

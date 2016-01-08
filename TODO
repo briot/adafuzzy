@@ -1,0 +1,17 @@
+* If multiple rule have an output on same term ("power is full"), can
+  we combine them before we do the accumulation ? This could save time,
+  and allow us to display the fuzzy value of an output:
+
+      power = 0/LOW + 0.282/MEDIUM + 0.218/HIGH
+      power.output = 64.354
+
+* OK Test performance against fuzzylite
+   100_000 iteration of simple temperature/power controller:
+      Ada:       0m0.660s
+      fuzzylite: 0m1.266s
+
+* Lookup tables for memberships, especially for centroids
+* faster centroid for predefined membership forms
+* visitors (for debug, ...)
+* Parser for .fcl files
+* Generate code (no need for malloc for instance)

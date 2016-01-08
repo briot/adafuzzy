@@ -3,6 +3,7 @@
 
 with Ada.Strings.Unbounded;     use Ada.Strings.Unbounded;
 with Ada.Containers.Vectors;
+with GNATCOLL.Traces;           use GNATCOLL.Traces;
 
 generic
    type Scalar is digits <>;
@@ -356,6 +357,9 @@ package Fuzzy is
    --  Compute the value of the output variables given the current value of
    --  the input variables.
    --  Self is unmodified, only the output variables's values are modified
+
+   procedure Trace (Me : GNATCOLL.Traces.Trace_Handle; Self : Engine);
+   --  Dump the settings of Engine to the given trace
 
 private
 

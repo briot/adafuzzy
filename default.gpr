@@ -1,5 +1,6 @@
 with "fuzzy";
 with "shared";
+with "gnatcoll";
 
 project Default is
    for Main use ("example.adb");
