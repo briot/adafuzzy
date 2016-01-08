@@ -17,9 +17,32 @@ generic
    --  fuzzy sets. Performance can be tweaked by changing the precision of
    --  this type.
 
+   Resolution : Integer := 200;
+   --  This is used when performing integration on membership functions.
+   --  Higher values will lead to more precise results, but slower
+   --  computation.
+
 package Fuzzy is
 
    type Membership is new Base_Membership range 0.0 .. 1.0;
+
+   type Activation_Method is (Activation_Min, Activation_Prod);
+   --  How the membership value of a rule's antecedents impact the rule's
+   --  output sets.
+   --    Activation_Min: The output sets are truncated so that their maximum
+   --       membership value is that of the rule's antecedents.
+   --    Activation_Scale: the output sets are scaled down.
+
+   type Accumulation_Method is (Accumulation_Max, Accumulation_Sum);
+   --  How to combine the multiple rules that apply to a variable
+   --    Accumulation_Max: for each value in the output space, the maximum
+   --       membership value for all the rules that fired is chosen.
+   --    Accumulation_Sum: the bounded sum of all membership values is
+   --       chosen.
+
+   type Defuzzification_Method is (Defuzzify_Centroid);
+   --  How to compute a crisp value from a fuzzy set
+   --    Defuzzify_Centroid: find the center of gravity for the set.
 
    --------------------------
    -- Membership functions --
@@ -31,24 +54,25 @@ package Fuzzy is
       (Self : Membership_Function; X : Scalar) return Membership is abstract;
    --  Returns the degree of membership of X to the set.
 
-   type Activation_Method is (Activation_Min, Activation_Prod);
-   --  How the membership value of a rule's antecedents impact the rule's
-   --  output sets.
-   --    Activation_Min: The output sets are truncated so that their maximum
-   --       membership value is that of the rule's antecedents.
-   --    Activation_Scale: the output sets are scaled down.
-
    function Activate
       (Self   : not null access Membership_Function;
        Method : Activation_Method;
        Value  : Membership)
-      return Membership_Function'Class;
+      return not null access Membership_Function'Class;
    --  Return a new membership function that is the result of applying the
    --  activation method to Self.
    --  In some cases, it is possible to return an efficient function (for
    --  instance a Trapeze is created when we use Activation_Min on a Triangle.
    --  In other cases, the default implementation will do the computation on
    --  the fly (integration, centroid, ...) as needed, which is less efficient
+
+   function Defuzzify
+      (Self   : not null access Membership_Function;
+       Method : Defuzzification_Method;
+       Min, Max : Scalar) return Scalar;
+   --  Compute a single crisp value to represent the set.
+   --  The default is to do the computation on the fly (integration, ...), but
+   --  more efficient ways exist for specific sets.
 
    -------------------------------------
    -- Predefined membership functions --
@@ -117,6 +141,12 @@ package Fuzzy is
    procedure Set_Range (Self : in out Variable; Min, Max : Scalar);
    --  Set the range of valid values for the variable. By default, this
    --  is the whole set of values allowed for Scalar.
+   --  Setting this range is important in most cases since it impacts the
+   --  computation for the defuzzification methods (a centroid requires
+   --  integration, for instance, and the precision will be much better on
+   --  a smaller range). The range is also mandatory when using slope
+   --  membership functions (since otherwise the center of gravity will
+   --  always end up as 0.0 or 1.0).
 
    procedure Add_Term
       (Self       : in out Variable;
@@ -133,27 +163,14 @@ package Fuzzy is
    --  This is no longer true once the variable has been added to an engine,
    --  and some rules were also added to the engine.
 
-   ---------------------
-   -- Input_Variables --
-   ---------------------
+   procedure Set_Value (Self : in out Variable; Value : Scalar);
+   function Get_Value (Self : Variable) return Scalar;
+   --  Return the current value of the variable.
+   --  Setting the value does not automatically cause a recomputation of the
+   --  output variables.
 
    type Input_Variable is new Variable with private;
-
-   procedure Set_Value (Self : in out Input_Variable; Value : Scalar);
-   --  Set the value of the variable.
-   --  This does not automatically cause a recomputation of the output
-   --  variables.
-
-   ----------------------
-   -- Output_Variables --
-   ----------------------
-
    type Output_Variable is new Variable with private;
-
-   function Get_Value (Self : Output_Variable) return Scalar;
-   --  Return the current value of the variable.
-   --  This value must be explicitly by the engine, this procedure does no
-   --  recomputation.
 
    ------------
    -- Hedges --
@@ -193,9 +210,6 @@ package Fuzzy is
    function "="
       (Var       : not null access Output_Variable'Class;
        Term      : String) return Output_Expr;
-   function "="
-      (Var       : not null access Output_Variable'Class;
-       Term      : Term_With_Hedge) return Output_Expr;
    --  Create a new expression testing the membership of a specific
    --  variable.
    --  The variable must have been added to the engine already. The rule
@@ -297,8 +311,6 @@ package Fuzzy is
    --  by the caller. Var will be freed when the engine itself is freed, so it
    --  is safe to keep a handle on the variable while the engine exists.
 
-   type Defuzzification_Method is (Defuzzify_Centroid);
-
    procedure Add_Rule_Block
       (Self         : in out Engine;
        Name         : String;
@@ -329,24 +341,31 @@ package Fuzzy is
    --  Whether at least one rule was defined for the engine.
    --  When this is True, no more variables or terms can be added.
 
-   type Accumulation_Method is (Accumulation_Max, Accumulation_Sum);
-   --  How to combine the multiple rules that apply to a variable
-   --    Accumulation_Max: for each value in the output space, the maximum
-   --       membership value for all the rules that fired is chosen.
-   --    Accumulation_Sum: the bounded sum of all membership values is
-   --       chosen.
-
    procedure Set_Accumulation
       (Self : in out Engine; Method : Accumulation_Method := Accumulation_Max);
-   --  Set the accumulation method for this engine
+   --  Set the accumulation method for this engine.
+   --  This is sometimes also called the Aggregation method.
 
-   procedure Process (Self : in out Engine);
+   procedure Set_Defuzzification
+      (Self   : in out Engine;
+       Method : Defuzzification_Method := Defuzzify_Centroid);
+   --  Set the method to use to convert a fuzzy set to a single scalar value
+
+   procedure Process (Self : Engine)
+      with Pre => Self.Has_Rules;
    --  Compute the value of the output variables given the current value of
    --  the input variables.
+   --  Self is unmodified, only the output variables's values are modified
 
 private
 
    type Membership_Function is abstract tagged null record;
+   type Rule_Idx is new Positive;
+
+   type Membership_Function_Access is access all Membership_Function'Class;
+   type Membership_Function_Array is
+      array (Rule_Idx range <>) of Membership_Function_Access;
+   --  Must be freed by the record that contains this type
 
    type Fuzzy_Var_Idx is new Positive;
    type Fuzzy_Var_Values is array (Fuzzy_Var_Idx range <>) of Membership;
@@ -371,8 +390,9 @@ private
 
    type Variable is abstract tagged record
       Name     : Unbounded_String;
-      Min, Max : Scalar;
-      Value    : Scalar;
+      Min      : Scalar := Scalar'First;
+      Max      : Scalar := Scalar'Last;
+      Value    : Scalar := 0.0;
       Terms    : Term_Vectors.Vector;
       Frozen   : Boolean := False;
    end record;
@@ -390,7 +410,7 @@ private
 
    type Output_Expr is record
       Var  : not null access Output_Variable'Class;
-      Term : Term_With_Hedge;
+      Term : Unbounded_String;
    end record;
 
    type Input_Expr_Array_Access is access Input_Expr_Array;
@@ -408,22 +428,28 @@ private
    package Output_Variable_Vectors is new Ada.Containers.Vectors
       (Var_Idx, Output_Variable_Access);
 
-   type Rule_Idx is new Positive;
    type Rule_Weights is array (Rule_Idx range <>) of Membership;
 
-   type Rule_Part_Details is record
+   type Antecedent_Details is record
       Fuzzy_Value : Fuzzy_Var_Idx := Term_Not_Found;
       Hedge       : Hedge_Func := null;
    end record;
-   type Rule_Parts is array (Rule_Idx range <>, Var_Idx range <>)
-      of Rule_Part_Details;
+   type Antecedents is array (Rule_Idx range <>, Var_Idx range <>)
+      of Antecedent_Details;
    --  Which fuzzy value to use for the each variable.
+
+   type Consequent_Details is record
+      Term : Membership_Function_Access;   --  owned
+   end record;
+   type Consequents is array (Rule_Idx range <>, Var_Idx range <>)
+      of Consequent_Details;
 
    type Rule_Block_Details;
    type Rule_Block is access all Rule_Block_Details;
    type Rule_Block_Details
-      (Rules_Count : Rule_Idx;
-       Vars_Count  : Var_Idx) is
+      (Rules_Count       : Rule_Idx;
+       Input_Vars_Count  : Var_Idx;
+       Output_Vars_Count : Var_Idx) is
    record
       Name    : Unbounded_String;
 
@@ -434,7 +460,8 @@ private
       Activation   : Activation_Method;
 
       Weights : Rule_Weights (1 .. Rules_Count);
-      Rules   : Rule_Parts (1 .. Rules_Count, 1 .. Vars_Count);
+      Left    : Antecedents (1 .. Rules_Count, 1 .. Input_Vars_Count);
+      Right   : Consequents (1 .. Rules_Count, 1 .. Output_Vars_Count);
 
       Next    : Rule_Block;
    end record;
@@ -455,8 +482,13 @@ private
       Outputs : Output_Variable_Vectors.Vector;
       Rules   : Rule_Block;                --  List of rule blocks
       Accumulation : Accumulation_Method := Accumulation_Max;
+      Defuzzification : Defuzzification_Method := Defuzzify_Centroid;
 
-      Vars    : Fuzzy_Var_Values_Access;   --  Fuzzy-ied value of vars
+      Total_Rules : Rule_Idx;
+      --  Number of registered rules, in all rule blocks.
+
+      Total_Input_And_Terms : Fuzzy_Var_Idx;
+      --  Number of input variables and their terms
    end record;
 
 end Fuzzy;

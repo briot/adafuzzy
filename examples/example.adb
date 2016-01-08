@@ -14,8 +14,8 @@ begin
    Temperature.Set_Name ("Temperature");
    Temperature.Set_Range (-30.0, 50.0);
    Temperature.Add_Term ("Cold",   Create_Slope_Left (10.0, 15.0));
-   Temperature.Add_Term ("Medium", Create_Triangle (12.0, 20.0, 25.0));
-   Temperature.Add_Term ("Hot",    Create_Slope_Right (22.0, 30.0));
+   Temperature.Add_Term ("Medium", Create_Triangle (12.0, 20.0, 28.0));
+   Temperature.Add_Term ("Hot",    Create_Slope_Right (25.0, 30.0));
    Eng.Add_Input (Temperature);
 
    Power := new Output_Variable;
@@ -33,7 +33,19 @@ begin
                   Implies (Temperature = "Hot", Power = "Low")));
 
    Temperature.Set_Value (14.0);
-   Eng.Process;
-   Put_Line (Power.Get_Value'Img);
+
+   loop
+      Put_Line ("-----------------------------------------");
+      Put_Line ("Temperature=" & Temperature.Get_Value'Img);
+      Eng.Process;
+      Put_Line ("Result => Power is set to" & Power.Get_Value'Img);
+
+      --  Simulate the effect of the power
+      --  100% power => +0.5 degree
+      --  0% power   => -0.5 degree
+      Temperature.Set_Value
+         (Temperature.Get_Value +
+          (Power.Get_Value - 50.0) * 0.01);
+   end loop;
 
 end Example;

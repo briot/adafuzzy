@@ -1,5 +1,6 @@
 with Ada.Containers;   use Ada.Containers;
 with Ada.Text_IO;      use Ada.Text_IO;
+with Ada.Unchecked_Deallocation;
 
 package body Fuzzy is
 
@@ -28,17 +29,47 @@ package body Fuzzy is
    overriding function Value
       (Self : Slope_Right; X : Scalar) return Membership;
 
-   type Wrapper is new Membership_Function with record
+   type Activated_Membership is new Membership_Function with record
       Wrapped    : not null access Membership_Function'Class;
       Activation : Activation_Method;
       Value      : Membership;
    end record;
    overriding function Value
-      (Self : Wrapper; X : Scalar) return Membership;
+      (Self : Activated_Membership; X : Scalar) return Membership;
    --  An internal wrapper for membership functions, which applies the
    --  activation functions and defuzzification methods automatically. This
    --  perform full computation of centroid, ... by doing some limited form
    --  of numeric integration.
+
+   type Accumulated_Membership (Max_Rules_Count : Rule_Idx)
+   is new Membership_Function with record
+      Funcs        : Membership_Function_Array (1 .. Max_Rules_Count);
+      Last         : Natural := 0;
+      Accumulation : Accumulation_Method;
+   end record;
+   overriding function Value
+      (Self : Accumulated_Membership; X : Scalar) return Membership;
+   overriding function Defuzzify
+      (Self   : not null access Accumulated_Membership;
+       Method : Defuzzification_Method;
+       Min, Max : Scalar) return Scalar;
+   --  An internal membership that represents the accumulation of several
+   --  membership functions that were activated by the rules.
+
+   function Is_Empty (Self : Accumulated_Membership'Class) return Boolean
+      is (Self.Last < Natural (Self.Funcs'First)) with Inline;
+   --  True if there are no accumulated function
+
+   procedure Add_Func
+      (Self : in out Accumulated_Membership'Class;
+       Func : not null access Membership_Function'Class);
+   --  Add a new function to accumulate
+
+   procedure Free (Self : in out Accumulated_Membership'Class);
+   --  Free the memory used for all accumulated functions
+
+   procedure Unchecked_Free is new Ada.Unchecked_Deallocation
+      (Membership_Function'Class, Membership_Function_Access);
 
    function Hedge_Very (X : Membership) return Membership;
    function Hedge_Not (X : Membership) return Membership;
@@ -46,9 +77,6 @@ package body Fuzzy is
 
    procedure Freeze (Self : in out Engine'Class);
    --  Make it invalid to add new variables or terms to this engine
-
-   procedure Fuzzify (Self : in out Engine'Class);
-   --  Compute the fuzzifyed value for the input variables
 
    ---------------------
    -- Create_Triangle --
@@ -186,7 +214,7 @@ package body Fuzzy is
    -----------
 
    overriding function Value
-      (Self : Wrapper; X : Scalar) return Membership is
+      (Self : Activated_Membership; X : Scalar) return Membership is
    begin
       case Self.Activation is
          when Activation_Min =>
@@ -196,6 +224,82 @@ package body Fuzzy is
       end case;
    end Value;
 
+   -----------
+   -- Value --
+   -----------
+
+   overriding function Value
+      (Self : Accumulated_Membership; X : Scalar) return Membership
+   is
+      Result : Membership;
+   begin
+      if Self.Is_Empty then
+         return 0.0;
+      else
+         Result := Self.Funcs (Self.Funcs'First).Value (X);
+         case Self.Accumulation is
+            when Accumulation_Max =>
+               for F in Self.Funcs'First + 1 .. Rule_Idx (Self.Last) loop
+                  Result := Membership'Max (Result, Self.Funcs (F).Value (X));
+               end loop;
+
+            when Accumulation_Sum =>
+               for F in Self.Funcs'First + 1 .. Rule_Idx (Self.Last) loop
+                  Result := Membership'Min
+                     (1.0, Result + Self.Funcs (F).Value (X));
+               end loop;
+         end case;
+      end if;
+      return Result;
+   end Value;
+
+   ---------------
+   -- Defuzzify --
+   ---------------
+
+   overriding function Defuzzify
+      (Self   : not null access Accumulated_Membership;
+       Method : Defuzzification_Method;
+       Min, Max : Scalar) return Scalar is
+   begin
+      if Self.Is_Empty then
+         return 0.0;
+
+      elsif Self.Last = Natural (Self.Funcs'First) then
+         --  If there is a single rule, defer to that rule's primitive
+         --  which might be more efficient
+         return Self.Funcs (Self.Funcs'First).Defuzzify (Method, Min, Max);
+
+      else
+         --  Use the default implementation that does heavier computation
+         return Membership_Function (Self.all).Defuzzify (Method, Min, Max);
+      end if;
+   end Defuzzify;
+
+   --------------
+   -- Add_Func --
+   --------------
+
+   procedure Add_Func
+      (Self : in out Accumulated_Membership'Class;
+       Func : not null access Membership_Function'Class) is
+   begin
+      Self.Last := Self.Last + 1;
+      Self.Funcs (Rule_Idx (Self.Last)) := Membership_Function_Access (Func);
+   end Add_Func;
+
+   ----------
+   -- Free --
+   ----------
+
+   procedure Free (Self : in out Accumulated_Membership'Class) is
+   begin
+      for A in Self.Funcs'First .. Rule_Idx (Self.Last) loop
+         Unchecked_Free (Self.Funcs (A));
+      end loop;
+      Self.Last := Natural (Self.Funcs'First) - 1;
+   end Free;
+
    --------------
    -- Activate --
    --------------
@@ -204,14 +308,44 @@ package body Fuzzy is
       (Self   : not null access Membership_Function;
        Method : Activation_Method;
        Value  : Membership)
-      return Membership_Function'Class is
+      return not null access Membership_Function'Class is
    begin
-      return Wrapper'
+      return new Activated_Membership'
          (Membership_Function with
           Wrapped    => Self,
           Activation => Method,
           Value      => Value);
    end Activate;
+
+   ---------------
+   -- Defuzzify --
+   ---------------
+
+   function Defuzzify
+      (Self   : not null access Membership_Function;
+       Method : Defuzzification_Method;
+       Min, Max : Scalar) return Scalar
+   is
+      Dx, X, Y, Xcog, Weight : Scalar;
+   begin
+      case Method is
+         when Defuzzify_Centroid =>
+            Dx     := (Max - Min) / Scalar (Resolution);
+            Xcog   := 0.0;
+            Weight := 0.0;
+            X      := Min + 0.5 * Dx;
+
+            for J in 1 .. Resolution loop
+               --  value in the middle of the interval
+               Y := Scalar (Membership_Function_Access (Self).Value (X));
+               Xcog := Xcog + X * Y;
+               Weight := Weight + Y;  --  multiply by Dx only once at the end
+               X := X + Dx;
+            end loop;
+
+            return Xcog / Weight;
+      end case;
+   end Defuzzify;
 
    --------------
    -- Set_Name --
@@ -262,7 +396,7 @@ package body Fuzzy is
    -- Set_Value --
    ---------------
 
-   procedure Set_Value (Self : in out Input_Variable; Value : Scalar) is
+   procedure Set_Value (Self : in out Variable; Value : Scalar) is
    begin
       Self.Value := Value;
    end Set_Value;
@@ -271,7 +405,7 @@ package body Fuzzy is
    -- Get_Value --
    ---------------
 
-   function Get_Value (Self : Output_Variable) return Scalar is
+   function Get_Value (Self : Variable) return Scalar is
    begin
       return Self.Value;
    end Get_Value;
@@ -380,18 +514,7 @@ package body Fuzzy is
       (Var    : not null access Output_Variable'Class;
        Term   : String) return Output_Expr is
    begin
-      return (Var, (To_Unbounded_String (Term), null));
-   end "=";
-
-   ---------
-   -- "=" --
-   ---------
-
-   function "="
-      (Var    : not null access Output_Variable'Class;
-       Term   : Term_With_Hedge) return Output_Expr is
-   begin
-      return (Var, Term);
+      return (Var, To_Unbounded_String (Term));
    end "=";
 
    -------------
@@ -465,15 +588,11 @@ package body Fuzzy is
          end loop;
       end loop;
 
+      Self.Total_Input_And_Terms := Idx - 1;
+
       for Var of Self.Outputs loop
          Var.Frozen := True;
-         for T of Var.Terms loop
-            T.Idx := Idx;
-            Idx := Idx + 1;
-         end loop;
       end loop;
-
-      Self.Vars := new Fuzzy_Var_Values (Fuzzy_Var_Idx'First .. Idx - 1);
    end Freeze;
 
    --------------------
@@ -495,43 +614,20 @@ package body Fuzzy is
       Idx   : Var_Idx;
       Value : Fuzzy_Var_Idx;
       R_Idx : Rule_Idx;
-
-      procedure Add_Variable
-         (Var   : not null access Variable'Class;
-          Term  : Term_With_Hedge);
-      --  Add the variable we found (Idx, Found_Value) to the current rule
-
-      procedure Add_Variable
-         (Var   : not null access Variable'Class;
-          Term  : Term_With_Hedge) is
-      begin
-         if Idx = Var_Not_Found then
-            raise Invalid_Variable with
-               "Variable """ & To_String (Var.Name)
-               & """ not in this engine";
-         elsif Value = Term_Not_Found then
-            raise Invalid_Term with
-               "Term """ & To_String (Term.Term)
-               & """ invalid for variable """ & To_String (Var.Name) & """";
-         elsif Tmp.Rules (R_Idx, Idx).Fuzzy_Value /= Term_Not_Found then
-            raise Invalid_Variable with
-               "Variable """ & To_String (Var.Name)
-               & """ is referenced twice in a rule";
-         else
-            Tmp.Rules (R_Idx, Idx) :=
-               (Fuzzy_Value => Value,
-                Hedge       => Term.Func);
-         end if;
-      end Add_Variable;
+      Member : Membership_Function_Access;
 
    begin
       if not Self.Has_Rules then
          Freeze (Self);
+         Self.Total_Rules := Rules'Length;
+      else
+         Self.Total_Rules := Self.Total_Rules + Rules'Length;
       end if;
 
       Tmp := new Rule_Block_Details
-         (Rules_Count => Rules'Length,
-          Vars_Count  => Var_Idx (Self.Inputs.Length + Self.Outputs.Length));
+         (Rules_Count       => Rules'Length,
+          Input_Vars_Count  => Var_Idx (Self.Inputs.Length),
+          Output_Vars_Count => Var_Idx (Self.Outputs.Length));
       Tmp.Next := Self.Rules;
       Self.Rules := Tmp;
 
@@ -566,22 +662,39 @@ package body Fuzzy is
                end if;
             end loop For_All_Inputs;
 
-            Add_Variable (Input.Var, Input.Term);
+            if Idx = Var_Not_Found then
+               raise Invalid_Variable with
+                  "Variable """ & To_String (Input.Var.Name)
+                  & """ not in this engine";
+            elsif Value = Term_Not_Found then
+               raise Invalid_Term with
+                  "Term """ & To_String (Input.Term.Term)
+                  & """ invalid for variable """
+                  & To_String (Input.Var.Name) & """";
+            elsif Tmp.Left (R_Idx, Idx).Fuzzy_Value /= Term_Not_Found then
+               raise Invalid_Variable with
+                  "Variable """ & To_String (Input.Var.Name)
+                  & """ is referenced twice in a rule";
+            else
+               Tmp.Left (R_Idx, Idx) :=
+                  (Fuzzy_Value => Value,
+                   Hedge       => Input.Term.Func);
+            end if;
          end loop;
 
          --  Process output variables
 
          for Output of Rules (R).Output.all loop
-            Idx   := Var_Not_Found;
-            Value := Term_Not_Found;
+            Idx    := Var_Not_Found;
+            Member := null;
 
             For_All_Outputs :
             for C in Self.Outputs.Iterate loop
                if Element (C) = Output.Var then
-                  Idx := To_Index (C) + Var_Idx (Self.Inputs.Length);
+                  Idx := To_Index (C);
                   for T of Self.Outputs.Reference (C).Terms loop
-                     if T.Name = Output.Term.Term then
-                        Value := T.Idx;
+                     if T.Name = Output.Term then
+                        Member := T.Membership;
                         T.In_Rules := T.In_Rules + 1;
                         exit For_All_Outputs;
                      end if;
@@ -590,7 +703,23 @@ package body Fuzzy is
                end if;
             end loop For_All_Outputs;
 
-            Add_Variable (Output.Var, Output.Term);
+            if Idx = Var_Not_Found then
+               raise Invalid_Variable with
+                  "Variable """ & To_String (Output.Var.Name)
+                  & """ not in this engine";
+            elsif Member = null then
+               raise Invalid_Term with
+                  "Term """ & To_String (Output.Term)
+                  & """ invalid for variable """
+                  & To_String (Output.Var.Name) & """";
+            elsif Tmp.Right (R_Idx, Idx).Term /= null then
+               raise Invalid_Variable with
+                  "Variable """ & To_String (Output.Var.Name)
+                  & """ is referenced twice in a rule";
+            else
+               Tmp.Right (R_Idx, Idx) :=
+                  (Term        => Member);
+            end if;
          end loop;
       end loop;
 
@@ -598,7 +727,7 @@ package body Fuzzy is
       for V of Self.Inputs loop
          Put_Line ("  " & To_String (V.Name));
          for T of V.Terms loop
-            Put_Line ("    " & To_String (T.Name) & " (rules: "
+            Put_Line ("    " & To_String (T.Name) & " (rules:"
                & T.In_Rules'Img & ") (idx=" & T.Idx'Img & ")");
          end loop;
       end loop;
@@ -607,8 +736,8 @@ package body Fuzzy is
       for V of Self.Outputs loop
          Put_Line ("  " & To_String (V.Name));
          for T of V.Terms loop
-            Put_Line ("    " & To_String (T.Name) & " (rules: "
-               & T.In_Rules'Img & ") (idx=" & T.Idx'Img & ")");
+            Put_Line ("    " & To_String (T.Name) & " (rules:"
+               & T.In_Rules'Img & ")");
          end loop;
       end loop;
 
@@ -617,10 +746,10 @@ package body Fuzzy is
       begin
          while R /= null loop
             Put_Line ("Rules: " & To_String (R.Name));
-            for U in R.Rules'Range (1) loop
+            for U in R.Left'Range (1) loop
                Put ("  indexes=");
-               for V in R.Rules'Range (2) loop
-                  Put (R.Rules (U, V).Fuzzy_Value'Img);
+               for V in R.Left'Range (2) loop
+                  Put (R.Left (U, V).Fuzzy_Value'Img);
                end loop;
                New_Line;
             end loop;
@@ -642,91 +771,171 @@ package body Fuzzy is
       Self.Accumulation := Method;
    end Set_Accumulation;
 
-   -------------
-   -- Fuzzify --
-   -------------
+   -------------------------
+   -- Set_Defuzzification --
+   -------------------------
 
-   procedure Fuzzify (Self : in out Engine'Class) is
+   procedure Set_Defuzzification
+      (Self   : in out Engine;
+       Method : Defuzzification_Method := Defuzzify_Centroid) is
    begin
-      for V of Self.Inputs loop
-         for T of V.Terms loop
-            if T.In_Rules /= 0 then
-               Self.Vars (T.Idx) := T.Membership.Value (V.Value);
-            end if;
-         end loop;
-      end loop;
-
-      Put_Line ("Fuzzify:");
-      Put (" ");
-      for V in Self.Vars'Range loop
-         Put (Self.Vars (V)'Img);
-      end loop;
-      New_Line;
-   end Fuzzify;
+      Self.Defuzzification := Method;
+   end Set_Defuzzification;
 
    -------------
    -- Process --
    -------------
 
-   procedure Process (Self : in out Engine) is
-      B : Rule_Block;
-      M, Tmp : Membership;
-      Idx : Fuzzy_Var_Idx;
-      Input_Count : constant Var_Idx := Var_Idx (Self.Inputs.Length);
-      Output_Count : constant Var_Idx := Var_Idx (Self.Outputs.Length);
+   procedure Process (Self : Engine) is
+      Rule_Levels : Rule_Weights (1 .. Self.Total_Rules);
+      --  Activation level for each rules
+
+      Vars : Fuzzy_Var_Values
+         (Fuzzy_Var_Idx'First .. Self.Total_Input_And_Terms);
+
+      procedure Fuzzify;
+      --  Compute the fuzzifyed value for the input variables
+      --  Sets:  Vars
+
+      procedure Activate;
+      --  Compute the total activation level for each rule by combining
+      --  all their antecedents, hedges and weights.
+      --  Sets: Rule_Levels
+
+      procedure Accumulate_And_Defuzzify;
+      --  For each output variable, look at the all rules that set it,
+      --  and compute the final membership function. Defuzzify the
+      --  value to a crisp value
+
+      -------------
+      -- Fuzzify --
+      -------------
+
+      procedure Fuzzify is
+      begin
+         for V of Self.Inputs loop
+            for T of V.Terms loop
+               if T.In_Rules /= 0 then
+                  Vars (T.Idx) := T.Membership.Value (V.Value);
+               end if;
+            end loop;
+         end loop;
+
+         Put_Line ("Fuzzify input vars:");
+         Put (" ");
+         for V of Self.Inputs loop
+            Put (To_String (V.Name) & " =");
+            for T of V.Terms loop
+               Put (Vars (T.Idx)'Img & "/" & To_String (T.Name));
+            end loop;
+            New_Line;
+         end loop;
+      end Fuzzify;
+
+      --------------
+      -- Activate --
+      --------------
+
+      procedure Activate is
+         B : Rule_Block;
+         M, Tmp : Membership;
+         Idx : Fuzzy_Var_Idx;
+         R_Idx  : Rule_Idx := Rule_Idx'First;
+      begin
+         B := Self.Rules;
+         while B /= null loop
+            if B.Enabled then
+               for R in B.Left'Range (1) loop
+                  M := Membership'Last;
+                  for Input in B.Left'Range (2) loop
+                     Idx := B.Left (R, Input).Fuzzy_Value;
+
+                     if Idx /= Term_Not_Found then
+                        Tmp := Vars (Idx);
+                        if B.Left (R, Input).Hedge /= null then
+                           Tmp := B.Left (R, Input).Hedge (Tmp);
+                        end if;
+
+                        M := B.And_Operator (M, Tmp);
+                     end if;
+                  end loop;
+
+                  M := M * B.Weights (R);
+                  Rule_Levels (R_Idx) := M;
+                  R_Idx := R_Idx + 1;
+               end loop;
+            end if;
+            B := B.Next;
+         end loop;
+
+         Put_Line ("Rule activation levels:");
+         Put (" ");
+         for R of Rule_Levels loop
+            Put (R'Img);
+         end loop;
+         New_Line;
+      end Activate;
+
+      ------------------------------
+      -- Accumulate_And_Defuzzify --
+      ------------------------------
+
+      procedure Accumulate_And_Defuzzify is
+         R_Idx : Rule_Idx;
+         B : Rule_Block;
+         Member : Membership_Function_Access;
+         Accumulated : aliased Accumulated_Membership (Self.Total_Rules);
+         Var : Output_Variable_Access;
+      begin
+         Accumulated.Accumulation := Self.Accumulation;
+
+         --  for each output variable, look at all the rules
+
+         for Output in 1 .. Var_Idx (Self.Outputs.Length) loop
+            R_Idx := Rule_Idx'First;
+            B := Self.Rules;
+
+            --  Activate all rules: compute the membership function for
+            --  the current output variable, for each rule.
+
+            while B /= null loop
+               if B.Enabled then
+                  for R in B.Right'Range (1) loop
+                     Member := B.Right (R, Output).Term;
+                     if Member /= null then
+                        Accumulated.Add_Func
+                           (Member.Activate
+                              (B.Activation, Value => Rule_Levels (R_Idx)));
+                     end if;
+
+                     R_Idx := R_Idx + 1;
+                  end loop;
+               end if;
+               B := B.Next;
+            end loop;
+
+            Var := Self.Outputs (Output);
+            Var.Set_Value (Accumulated.Defuzzify
+               (Self.Defuzzification, Var.Min, Var.Max));
+
+            Accumulated.Free;
+         end loop;
+
+         Put_Line ("Output variables:");
+         for V of Self.Outputs loop
+            Put_Line ("  " & To_String (V.Name) & " =" & V.Value'Img);
+         end loop;
+      end Accumulate_And_Defuzzify;
+
    begin
       Put_Line ("Input variables:");
       for V of Self.Inputs loop
          Put_Line ("  " & To_String (V.Name) & " value=" & V.Value'Img);
       end loop;
 
-      Fuzzify (Self);
-
-      B := Self.Rules;
-      while B /= null loop
-         if B.Enabled then
-
-            for R in B.Rules'Range (1) loop
-               M := Membership'Last;
-               for Input in 1 .. Input_Count loop
-                  Idx := B.Rules (R, Input).Fuzzy_Value;
-
-                  if Idx /= Term_Not_Found then
-                     Tmp := Self.Vars (Idx);
-                     if B.Rules (R, Input).Hedge /= null then
-                        Tmp := B.Rules (R, Input).Hedge (Tmp);
-                     end if;
-
-                     M := B.And_Operator (M, Tmp);
-                  end if;
-               end loop;
-
-               M := M * B.Weights (R);
-
-               for Output in 1 .. Output_Count loop
-                  Idx := B.Rules (R, Output + Input_Count).Fuzzy_Value;
-                  if Idx /= Term_Not_Found then
-                     declare
-                        Out_Set : Membership_Function'Class :=
-                           Self.Outputs (Output).Activate
-                              (B.Activation, Value => M);
-                     begin
-                        null;
-                     end;
-
-                  end if;
-               end loop;
-            end loop;
-         end if;
-
-         B := B.Next;
-      end loop;
-
-      Put_Line ("Rule outputs:");
-      Put (" ");
-      for V in Self.Vars'Range loop
-         Put (Self.Vars (V)'Img);
-      end loop;
+      Fuzzify;
+      Activate;
+      Accumulate_And_Defuzzify;
    end Process;
 
 end Fuzzy;
