@@ -182,7 +182,7 @@ package body Fuzzy is
    begin
       if X <= Self.Max then
          return Self.Max_Value;
-      elsif X <= Self.Lower then
+      elsif X < Self.Lower then
          return Self.Max_Value
            * Membership ((X - Self.Lower) / (Self.Max - Self.Lower));
       else
@@ -213,7 +213,7 @@ package body Fuzzy is
    begin
       if X <= Self.Higher then
          return 0.0;
-      elsif X <= Self.Max then
+      elsif X < Self.Max then
          return Self.Max_Value
            * Membership ((X - Self.Higher) / (Self.Max - Self.Higher));
       else
