@@ -3,3 +3,6 @@ all:
 
 clean:
 	gprclean -q -r -Pdefault
+
+robot:
+	cd examples; ../obj/robot

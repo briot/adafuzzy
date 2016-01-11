@@ -3,7 +3,7 @@ with "shared";
 with "gnatcoll";
 
 project Default is
-   for Main use ("example.adb");
+   for Main use ("example.adb", "robot.adb");
    for Source_Dirs use ("examples");
    for Object_Dir use "obj";
 

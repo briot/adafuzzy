@@ -1,0 +1,94 @@
+FUNCTION_BLOCK robot
+
+VAR_INPUT
+  Front     : REAL;    (* RANGE (0.0 .. 1000.0); *)
+  Right     : REAL;    (* RANGE (0.0 .. 1000.0); *)
+  Left      : REAL;    (* RANGE (0.0 .. 1000.0); *)
+  GoalDist  : REAL;    (* RANGE (0.0 .. 1000.0); *)
+  GoalAngle : REAL;    (* RANGE (-180.0 .. 180.0); *)
+END_VAR
+
+VAR_OUTPUT
+  Speed      : REAL;
+  AngleSpeed : REAL;
+END_VAR
+
+FUZZIFY Front
+  TERM O_Very_Close := (  0.0, 1.0) ( 50.0, 0.0);
+  TERM O_Close      := (100.0, 1.0) (400.0, 0.0);
+  TERM O_Medium     := (190.0, 0.0) (200.0, 1.0) (300.0, 0.0);
+  TERM O_Far        := (100.0, 0.0) (700.0, 1.0);
+END_FUZZIFY
+
+FUZZIFY Right
+  TERM O_Very_Close := (  0.0, 1.0) ( 60.0, 0.0);
+  TERM O_Close      := ( 30.0, 1.0) (100.0, 0.0);
+  TERM O_Medium     := ( 80.0, 0.0) (200.0, 1.0) (300.0, 0.0);
+  TERM O_Far        := (100.0, 0.0) (700.0, 1.0);
+END_FUZZIFY
+
+FUZZIFY Left
+  TERM O_Very_Close  := (  0.0, 1.0) ( 60.0, 0.0);
+  TERM O_Close       := ( 30.0, 1.0) (100.0, 0.0);
+  TERM O_Medium      := ( 80.0, 0.0) (200.0, 1.0) (300.0, 0.0);
+  TERM O_Far         := (100.0, 0.0) (700.0, 1.0);
+END_FUZZIFY
+
+FUZZIFY GoalDist
+  TERM G_Close   := (  0.0, 1.0) ( 200.0, 0.0);
+  TERM G_Medium  := (150.0, 0.0) ( 400.0, 1.0) (1100.0, 0.0);
+  TERM G_Far     := (800.0, 0.0) (1100.0, 1.0);
+END_FUZZIFY
+
+FUZZIFY GoalAngle
+  TERM G_Right  := (-40.0, 1.0) ( 0.0, 0.0);
+  TERM G_Ahead  := (-20.0, 0.0) ( 0.0, 1.0) (20.0, 0.0);
+  TERM G_Left   := (  0.0, 0.0) (40.0, 1.0);
+END_FUZZIFY
+
+DEFUZZIFY Speed
+  RANGE := (0.0 .. 150.0);
+  TERM Slow   := ( 1.0, 0.0) ( 10.0, 1.0) (20.0, 0.0);
+  TERM Medium := (20.0, 0.0) ( 60.0, 1.0) (120.0, 0.0);
+  TERM Fast   := (80.0, 0.0) (120.0, 1.0) (150.0, 0.0);
+  DEFAULT     := 8.0;
+END_DEFUZZIFY
+
+DEFUZZIFY AngleSpeed
+  RANGE := (-90.0 .. 90.0);
+  TERM Full_Right   := (-90.0, 0.0) (-80.0, 1.0) (-70.0, 0.0);
+  TERM Right        := (-70.0, 0.0) (-40.0, 1.0) (-20.0, 0.0);
+  TERM Right_Slight := (-20.0, 0.0) (-10.0, 1.0) (  0.0, 0.0);
+  TERM Forward      := (-10.0, 0.0) (  0.0, 1.0) ( 10.0, 0.0);
+  TERM Left_Slight  := (  0.0, 0.0) ( 10.0, 1.0) ( 20.0, 0.0);
+  TERM Left         := ( 20.0, 0.0) ( 40.0, 1.0) ( 70.0, 0.0);
+  TERM Full_Left    := ( 70.0, 0.0) ( 80.0, 1.0) ( 90.0, 0.0);
+END_DEFUZZIFY
+
+RULEBLOCK speed
+  RULE 1: IF GoalAngle IS G_Ahead  AND Front IS O_Far  THEN Speed IS Medium;
+  RULE 2: IF Front IS O_Medium THEN Speed IS Medium;
+  RULE 3: IF Front IS O_Close  THEN Speed IS Slow;
+END_RULEBLOCK
+
+RULEBLOCK angle
+  RULE 1: IF GoalAngle IS G_Left  THEN AngleSpeed IS Left;
+  RULE 2: IF GoalAngle IS G_Ahead THEN AngleSpeed IS Forward;
+  RULE 3: IF GoalAngle IS G_Right THEN AngleSpeed IS Right;
+  RULE 4: IF Front IS O_Close
+            AND Left IS NOT O_Close
+            AND GoalAngle IS G_Left
+            AND GoalDist IS NOT G_Close
+            THEN AngleSpeed IS Left;
+  RULE 5: IF Front IS O_Close
+            AND Right IS NOT O_Close
+            AND GoalAngle IS G_Right
+            AND GoalDist IS NOT G_Close
+            THEN AngleSpeed IS Right;
+  RULE 7: IF Left IS O_Close       THEN AngleSpeed IS Right;
+  RULE 8: IF Right IS O_Close      THEN AngleSpeed IS Left;
+  RULE 9: IF Right IS O_Very_Close THEN AngleSpeed IS Full_Left;
+  RULE 10: IF Left IS O_Very_Close THEN AngleSpeed IS Full_Right;
+END_RULEBLOCK
+
+END_FUNCTION_BLOCK

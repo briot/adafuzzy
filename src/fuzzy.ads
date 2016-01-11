@@ -149,8 +149,8 @@ package Fuzzy is
    procedure Set_Range (Self : in out Variable; Min, Max : Scalar);
    --  Set the range of valid values for the variable. By default, this
    --  is the whole set of values allowed for Scalar.
-   --  Setting this range is important in most cases since it impacts the
-   --  computation for the defuzzification methods (a centroid requires
+   --  Setting this range is important for output variables since it impacts
+   --  the computation for the defuzzification methods (a centroid requires
    --  integration, for instance, and the precision will be much better on
    --  a smaller range). The range is also mandatory when using slope
    --  membership functions (since otherwise the center of gravity will
@@ -173,6 +173,22 @@ package Fuzzy is
 
    type Input_Variable is new Variable with private;
    type Output_Variable is new Variable with private;
+
+   procedure Set_Default
+      (Self    : in out Output_Variable;
+       Default : Scalar);
+   --  Set the default of the variable when unset.
+
+   procedure Set_Accumulation
+      (Self   : in out Output_Variable;
+       Method : Accumulation_Method := Accumulation_Max);
+   --  Set the accumulation method for this engine.
+   --  This is sometimes also called the Aggregation method.
+
+   procedure Set_Defuzzification
+      (Self   : in out Output_Variable;
+       Method : Defuzzification_Method := Defuzzify_Centroid);
+   --  Set the method to use to convert a fuzzy set to a single scalar value
 
    ------------
    -- Hedges --
@@ -345,20 +361,17 @@ package Fuzzy is
    Invalid_Variable : exception;
    Invalid_Term     : exception;
 
+   function Get_Input_Variable
+      (Self : Engine; Name : String) return access Input_Variable'Class;
+   function Get_Output_Variable
+      (Self : Engine; Name : String) return access Output_Variable'Class;
+   --  Retrieve a variable by name, or null if not such variable is
+   --  defined.
+
    function Has_Rules (Self : Engine'Class) return Boolean
       with Inline;
    --  Whether at least one rule was defined for the engine.
    --  When this is True, no more variables or terms can be added.
-
-   procedure Set_Accumulation
-      (Self : in out Engine; Method : Accumulation_Method := Accumulation_Max);
-   --  Set the accumulation method for this engine.
-   --  This is sometimes also called the Aggregation method.
-
-   procedure Set_Defuzzification
-      (Self   : in out Engine;
-       Method : Defuzzification_Method := Defuzzify_Centroid);
-   --  Set the method to use to convert a fuzzy set to a single scalar value
 
    type Var_Idx is new Positive;
    type Variable_Values (Var_Count : Var_Idx) is private;
@@ -452,16 +465,20 @@ private
    type Input_Variable is new Variable with null record;
    type Input_Variable_Access is access all Input_Variable'Class;
 
-   type Output_Variable is new Variable with null record;
+   type Output_Variable is new Variable with record
+      Default         : Scalar := Scalar'First;
+      Accumulation    : Accumulation_Method := Accumulation_Max;
+      Defuzzification : Defuzzification_Method := Defuzzify_Centroid;
+   end record;
    type Output_Variable_Access is access all Output_Variable'Class;
 
    type Input_Expr is record
-      Var  : not null access Input_Variable'Class;
+      Var  : access Input_Variable'Class;
       Term : Term_With_Hedge;
    end record;
 
    type Output_Expr is record
-      Var  : not null access Output_Variable'Class;
+      Var  : access Output_Variable'Class;
       Term : Unbounded_String;
    end record;
 
@@ -537,8 +554,6 @@ private
       Inputs  : Input_Variable_Vectors.Vector;
       Outputs : Output_Variable_Vectors.Vector;
       Rules   : Rule_Block;                --  List of rule blocks
-      Accumulation : Accumulation_Method := Accumulation_Max;
-      Defuzzification : Defuzzification_Method := Defuzzify_Centroid;
 
       Total_Rules : Rule_Idx;
       --  Number of registered rules, in all rule blocks.

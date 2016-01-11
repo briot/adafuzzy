@@ -806,13 +806,24 @@ package body Fuzzy is
       end;
    end Add_Rule_Block;
 
+   -----------------
+   -- Set_Default --
+   -----------------
+
+   procedure Set_Default
+      (Self    : in out Output_Variable;
+       Default : Scalar) is
+   begin
+      Self.Default := Default;
+   end Set_Default;
+
    ----------------------
    -- Set_Accumulation --
    ----------------------
 
    procedure Set_Accumulation
-      (Self : in out Engine; Method : Accumulation_Method := Accumulation_Max)
-   is
+      (Self   : in out Output_Variable;
+       Method : Accumulation_Method := Accumulation_Max) is
    begin
       Self.Accumulation := Method;
    end Set_Accumulation;
@@ -822,7 +833,7 @@ package body Fuzzy is
    -------------------------
 
    procedure Set_Defuzzification
-      (Self   : in out Engine;
+      (Self   : in out Output_Variable;
        Method : Defuzzification_Method := Defuzzify_Centroid) is
    begin
       Self.Defuzzification := Method;
@@ -915,11 +926,12 @@ package body Fuzzy is
          Accumulated : aliased Accumulated_Membership (Self.Total_Rules);
          Var : Output_Variable_Access;
       begin
-         Accumulated.Accumulation := Self.Accumulation;
-
          --  for each output variable, look at all the rules
 
          for Output in 1 .. Var_Idx (Self.Outputs.Length) loop
+            Var := Self.Outputs (Output);
+            Accumulated.Accumulation := Var.Accumulation;
+
             R_Idx := Rule_Idx'First;
             B := Self.Rules;
 
@@ -942,11 +954,10 @@ package body Fuzzy is
                B := B.Next;
             end loop;
 
-            Var := Self.Outputs (Output);
             Var.Set_Value
                (Values,
                 Accumulated.Defuzzify
-                   (Self.Defuzzification, Var.Min, Var.Max));
+                   (Var.Defuzzification, Var.Min, Var.Max));
 
             Accumulated.Free;
          end loop;
@@ -1081,5 +1092,35 @@ package body Fuzzy is
    begin
       return Natural (Self.Inputs.Length + Self.Outputs.Length);
    end Number_Of_Variables;
+
+   ------------------------
+   -- Get_Input_Variable --
+   ------------------------
+
+   function Get_Input_Variable
+      (Self : Engine; Name : String) return access Input_Variable'Class is
+   begin
+      for V of Self.Inputs loop
+         if V.Name = Name then
+            return V;
+         end if;
+      end loop;
+      return null;
+   end Get_Input_Variable;
+
+   -------------------------
+   -- Get_Output_Variable --
+   -------------------------
+
+   function Get_Output_Variable
+      (Self : Engine; Name : String) return access Output_Variable'Class is
+   begin
+      for V of Self.Outputs loop
+         if V.Name = Name then
+            return V;
+         end if;
+      end loop;
+      return null;
+   end Get_Output_Variable;
 
 end Fuzzy;
