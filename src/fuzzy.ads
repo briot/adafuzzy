@@ -51,6 +51,9 @@ package Fuzzy is
 
    type Membership_Function is abstract tagged private;
 
+   procedure Free (Self : in out Membership_Function) is null;
+   --  Free memory used by Self
+
    function Value
       (Self : Membership_Function; X : Scalar) return Membership is abstract;
    --  Returns the degree of membership of X to the set.
@@ -303,6 +306,11 @@ package Fuzzy is
    --  link them, this engine will compute the value of the output variables
    --  given the current value of the input variables.
 
+   procedure Free (Self : in out Engine);
+   --  Free memory used by Self, its rules and variables.
+   --  No variable should be used from that point on, any pointer you might
+   --  have kept will point to freed memory.
+
    procedure Add_Input
       (Self : in out Engine; Var : not null access Input_Variable'Class)
       with Pre => not Self.Has_Rules;
@@ -383,7 +391,7 @@ private
 
    type Term is record
       Name       : Unbounded_String;
-      Membership : access Membership_Function'Class;
+      Membership : Membership_Function_Access;   --  owned
 
       In_Rules   : Natural := 0;
       --  Number of rules that this term is needed for. A term that is not
@@ -404,6 +412,7 @@ private
       Terms    : Term_Vectors.Vector;
       Frozen   : Boolean := False;
    end record;
+   type Variable_Access is access all Variable'Class;
 
    type Input_Variable is new Variable with null record;
    type Input_Variable_Access is access all Input_Variable'Class;

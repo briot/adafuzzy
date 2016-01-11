@@ -56,6 +56,7 @@ package body Fuzzy is
    end record;
    overriding function Value
       (Self : Accumulated_Membership; X : Scalar) return Membership;
+   overriding procedure Free (Self : in out Accumulated_Membership);
    overriding function Defuzzify
       (Self   : not null access Accumulated_Membership;
        Method : Defuzzification_Method;
@@ -72,9 +73,6 @@ package body Fuzzy is
        Func : not null access Membership_Function'Class);
    --  Add a new function to accumulate
 
-   procedure Free (Self : in out Accumulated_Membership'Class);
-   --  Free the memory used for all accumulated functions
-
    procedure Unchecked_Free is new Ada.Unchecked_Deallocation
       (Membership_Function'Class, Membership_Function_Access);
 
@@ -84,6 +82,13 @@ package body Fuzzy is
 
    procedure Freeze (Self : in out Engine'Class);
    --  Make it invalid to add new variables or terms to this engine
+
+   procedure Free (R : in out Rule_Block);
+   --  Free the memory used by R (but not by the next rule block)
+
+   procedure Free (Self : in out Variable_Access);
+   procedure Free (Self : in out Rule);
+   --  Free the memory used by Self
 
    ---------------------
    -- Create_Triangle --
@@ -299,7 +304,7 @@ package body Fuzzy is
    -- Free --
    ----------
 
-   procedure Free (Self : in out Accumulated_Membership'Class) is
+   overriding procedure Free (Self : in out Accumulated_Membership) is
    begin
       for A in Self.Funcs'First .. Rule_Idx (Self.Last) loop
          Unchecked_Free (Self.Funcs (A));
@@ -779,7 +784,15 @@ package body Fuzzy is
          end loop;
       end loop;
 
-      --  ??? Must free the rules
+      --  Free the rules, which are no longer needed
+
+      declare
+         Tmp_Rules : Rule_Array := Rules;
+      begin
+         for R in Tmp_Rules'Range loop
+            Free (Tmp_Rules (R));
+         end loop;
+      end;
    end Add_Rule_Block;
 
    ----------------------
@@ -959,5 +972,80 @@ package body Fuzzy is
          end;
       end if;
    end Process;
+
+   ----------
+   -- Free --
+   ----------
+
+   procedure Free (Self : in out Engine) is
+      B, B_Next : Rule_Block;
+   begin
+      for V of Self.Inputs loop
+         Free (Variable_Access (V));
+      end loop;
+      Self.Inputs.Clear;
+
+      for V of Self.Outputs loop
+         Free (Variable_Access (V));
+      end loop;
+      Self.Outputs.Clear;
+
+      B := Self.Rules;
+      Self.Rules := null;
+      while B /= null loop
+         B_Next := B.Next;
+         Free (B);
+         B := B_Next;
+      end loop;
+   end Free;
+
+   ----------
+   -- Free --
+   ----------
+
+   procedure Free (R : in out Rule_Block) is
+      procedure Unchecked_Free is new Ada.Unchecked_Deallocation
+         (Rule_Block_Details, Rule_Block);
+   begin
+      Unchecked_Free (R);
+   end Free;
+
+   ----------
+   -- Free --
+   ----------
+
+   procedure Free (Self : in out Variable_Access) is
+      procedure Unchecked_Free is new Ada.Unchecked_Deallocation
+         (Membership_Function'Class, Membership_Function_Access);
+      procedure Unchecked_Free is new Ada.Unchecked_Deallocation
+         (Variable'Class, Variable_Access);
+   begin
+      if Self /= null then
+         for T of Self.Terms loop
+            Free (T.Membership.all);
+            Unchecked_Free (T.Membership);
+         end loop;
+         Unchecked_Free (Self);
+      end if;
+   end Free;
+
+   ----------
+   -- Free --
+   ----------
+
+   procedure Free (Self : in out Rule) is
+      procedure Unchecked_Free is new Ada.Unchecked_Deallocation
+         (Input_Expr_Array, Input_Expr_Array_Access);
+      procedure Unchecked_Free is new Ada.Unchecked_Deallocation
+         (Output_Expr_Array, Output_Expr_Array_Access);
+   begin
+      if Self.Input /= null then
+         Unchecked_Free (Self.Input);
+      end if;
+
+      if Self.Output /= null then
+         Unchecked_Free (Self.Output);
+      end if;
+   end Free;
 
 end Fuzzy;

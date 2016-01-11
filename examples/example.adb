@@ -55,4 +55,6 @@ begin
           (Power.Get_Value - 50.0) * 0.01);
    end loop;
 
+   Free (Eng);
+   GNATCOLL.Traces.Finalize;
 end Example;
