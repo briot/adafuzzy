@@ -82,7 +82,8 @@ package Fuzzy is
    function Create_Triangle
       (Lower, Max, Higher : Scalar;
        Max_Value          : Membership := 1.0)
-      return not null access Membership_Function'Class;
+      return not null access Membership_Function'Class
+      with Pre => (Lower <= Max and Max <= Higher);
    --  Create a new triangle membership function.
    --         max_value
    --           /\
@@ -93,7 +94,8 @@ package Fuzzy is
    function Create_Trapeze
       (Lower, Max1, Max2, Higher : Scalar;
        Max_Value                 : Membership := 1.0)
-      return not null access Membership_Function'Class;
+      return not null access Membership_Function'Class
+      with Pre => (Lower <= Max1 and Max1 <= Max2 and Max2 <= Higher);
    --  Create a new trapeze membership function
    --           _______   max_value
    --          /       \
@@ -105,11 +107,12 @@ package Fuzzy is
    --  you want to emulate the standard logic  "x > High" set. However, it is
    --  more efficient to use a slop in this case.
 
-   function Create_Slope_Left
+   function Create_Ramp_Left
       (Max, Lower : Scalar;
        Max_Value  : Membership := 1.0)
-      return not null access Membership_Function'Class;
-   --  Create a slope membership function, open to the left
+      return not null access Membership_Function'Class
+      with Pre => (Max <= Lower);
+   --  Create a ramp membership function, open to the left
    --
    --   ________    max_value
    --           \
@@ -117,11 +120,12 @@ package Fuzzy is
    --             \_________________
    --           M  L
 
-   function Create_Slope_Right
+   function Create_Ramp_Right
       (Higher, Max : Scalar;
        Max_Value   : Membership := 1.0)
-      return not null access Membership_Function'Class;
-   --  Create a slop membership function, open to the right
+      return not null access Membership_Function'Class
+      with Pre => (Higher <= Max);
+   --  Create a ramp membership function, open to the right
    --
    --               __________  max_value
    --              /

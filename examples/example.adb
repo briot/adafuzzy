@@ -17,17 +17,17 @@ begin
    Temperature := new Input_Variable;
    Temperature.Set_Name ("Temperature");
    Temperature.Set_Range (-30.0, 50.0);
-   Temperature.Add_Term ("Cold",   Create_Slope_Left (10.0, 15.0));
+   Temperature.Add_Term ("Cold",   Create_Ramp_Left (10.0, 15.0));
    Temperature.Add_Term ("Medium", Create_Triangle (12.0, 20.0, 28.0));
-   Temperature.Add_Term ("Hot",    Create_Slope_Right (25.0, 30.0));
+   Temperature.Add_Term ("Hot",    Create_Ramp_Right (25.0, 30.0));
    Eng.Add_Input (Temperature);
 
    Power := new Output_Variable;
    Power.Set_Name ("Power");
    Power.Set_Range (0.0, 100.0);
-   Power.Add_Term ("Low",    Create_Slope_Left (20.0, 50.0));
+   Power.Add_Term ("Low",    Create_Ramp_Left (20.0, 50.0));
    Power.Add_Term ("Medium", Create_Triangle (30.0, 50.0, 70.0));
-   Power.Add_Term ("High",   Create_Slope_Right (60.0, 80.0));
+   Power.Add_Term ("High",   Create_Ramp_Right (60.0, 80.0));
    Eng.Add_Output (Power);
 
    Eng.Add_Rule_Block

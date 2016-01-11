@@ -23,18 +23,18 @@ package body Fuzzy is
    end record;
    overriding function Value (Self : Trapeze; X : Scalar) return Membership;
 
-   type Slope_Left is new Membership_Function with record
+   type Ramp_Left is new Membership_Function with record
       Lower, Max : Scalar;
       Max_Value  : Membership;
    end record;
-   overriding function Value (Self : Slope_Left; X : Scalar) return Membership;
+   overriding function Value (Self : Ramp_Left; X : Scalar) return Membership;
 
-   type Slope_Right is new Membership_Function with record
+   type Ramp_Right is new Membership_Function with record
       Higher, Max : Scalar;
       Max_Value   : Membership;
    end record;
    overriding function Value
-      (Self : Slope_Right; X : Scalar) return Membership;
+      (Self : Ramp_Right; X : Scalar) return Membership;
 
    type Activated_Membership is new Membership_Function with record
       Wrapped    : not null access Membership_Function'Class;
@@ -155,25 +155,25 @@ package body Fuzzy is
    end Value;
 
    -----------------------
-   -- Create_Slope_Left --
+   -- Create_Ramp_Left --
    -----------------------
 
-   function Create_Slope_Left
+   function Create_Ramp_Left
       (Max, Lower : Scalar;
        Max_Value  : Membership := 1.0)
       return not null access Membership_Function'Class is
    begin
-      return new Slope_Left'
+      return new Ramp_Left'
          (Membership_Function with
           Lower => Lower, Max => Max, Max_Value => Max_Value);
-   end Create_Slope_Left;
+   end Create_Ramp_Left;
 
    -----------
    -- Value --
    -----------
 
    overriding function Value
-      (Self : Slope_Left; X : Scalar) return Membership is
+      (Self : Ramp_Left; X : Scalar) return Membership is
    begin
       if X <= Self.Max then
          return Self.Max_Value;
@@ -186,25 +186,25 @@ package body Fuzzy is
    end Value;
 
    ------------------------
-   -- Create_Slope_Right --
+   -- Create_Ramp_Right --
    ------------------------
 
-   function Create_Slope_Right
+   function Create_Ramp_Right
       (Higher, Max  : Scalar;
        Max_Value   : Membership := 1.0)
       return not null access Membership_Function'Class is
    begin
-      return new Slope_Right'
+      return new Ramp_Right'
          (Membership_Function with
           Higher => Higher, Max => Max, Max_Value => Max_Value);
-   end Create_Slope_Right;
+   end Create_Ramp_Right;
 
    -----------
    -- Value --
    -----------
 
    overriding function Value
-      (Self : Slope_Right; X : Scalar) return Membership is
+      (Self : Ramp_Right; X : Scalar) return Membership is
    begin
       if X <= Self.Higher then
          return 0.0;

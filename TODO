@@ -5,13 +5,23 @@
       power = 0/LOW + 0.282/MEDIUM + 0.218/HIGH
       power.output = 64.354
 
-* OK Test performance against fuzzylite
+* OK Test performance against other libraries
    100_000 iteration of simple temperature/power controller:
       Ada:       0m0.660s
       fuzzylite: 0m1.266s
+      ffll:      ???
 
 * Lookup tables for memberships, especially for centroids
 * faster centroid for predefined membership forms
-* visitors (for debug, ...)
+* visitors (for debug, GUI, ...)
 * Parser for .fcl files
 * Generate code (no need for malloc for instance)
+* Separate input and output values from variables
+  So that we can share the model among several objects
+* Make it work with singleton membership
+
+
+Examples
+========
+
+* Self-driving robot in a simulated environment
