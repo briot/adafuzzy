@@ -171,12 +171,6 @@ package Fuzzy is
    --  This is no longer true once the variable has been added to an engine,
    --  and some rules were also added to the engine.
 
-   procedure Set_Value (Self : in out Variable; Value : Scalar);
-   function Get_Value (Self : Variable) return Scalar;
-   --  Return the current value of the variable.
-   --  Setting the value does not automatically cause a recomputation of the
-   --  output variables.
-
    type Input_Variable is new Variable with private;
    type Output_Variable is new Variable with private;
 
@@ -323,6 +317,8 @@ package Fuzzy is
    --  The engine takes ownership of Var, which should therefore not be freed
    --  by the caller. Var will be freed when the engine itself is freed, so it
    --  is safe to keep a handle on the variable while the engine exists.
+   --  A given variable is only usable for one engine, and cannot be shared
+   --  between engines.
 
    procedure Add_Rule_Block
       (Self         : in out Engine;
@@ -364,11 +360,48 @@ package Fuzzy is
        Method : Defuzzification_Method := Defuzzify_Centroid);
    --  Set the method to use to convert a fuzzy set to a single scalar value
 
-   procedure Process (Self : Engine)
+   type Var_Idx is new Positive;
+   type Variable_Values (Var_Count : Var_Idx) is private;
+   --  A structure that stores the current value for input and output
+   --  variables for an engine.
+   --  The goal is that an engine itself is read-only, and can be shared among
+   --  multiple objects, each of which has its own values for variables.
+   --  The Variable_Values can either be constructed by calling Get_Values,
+   --  or by creating an object for which Var_Count is at least the number of
+   --  variables defined in the engine.
+
+   function Get_Values (Self : Engine'Class) return Variable_Values
       with Pre => Self.Has_Rules;
+   --  Returns an object large enough to hold the values for all input and
+   --  output variables in the engine. These values are uninitialized.
+   --  You can also create such an object manually (with the proper
+   --  discriminant) instead of calling this function, which is useful when
+   --  you need to store it in a record.
+
+   function Number_Of_Variables (Self : Engine'Class) return Natural
+      with Inline;
+   --  Return the number of variables (input and output) registered in this
+   --  engine.
+
+   procedure Set_Value
+      (Self   : Variable'Class;
+       Values : in out Variable_Values;
+       Value  : Scalar);
+   function Get_Value
+      (Self   : Variable'Class;
+      Values  : Variable_Values) return Scalar;
+   --  Return the current value of the variable.
+   --  Setting the value does not automatically cause a recomputation of the
+   --  output variables.
+
+   procedure Process (Self : Engine; Values : in out Variable_Values)
+      with Pre => Self.Has_Rules and then
+                  Integer (Values.Var_Count) >= Self.Number_Of_Variables;
    --  Compute the value of the output variables given the current value of
    --  the input variables.
-   --  Self is unmodified, only the output variables's values are modified
+   --  Self is unmodified, only Values is modified.
+   --  It is safe to call this function from multiple threads, using different
+   --  Values variable.
 
    procedure Trace (Me : GNATCOLL.Traces.Trace_Handle; Self : Engine);
    --  Dump the settings of Engine to the given trace
@@ -408,9 +441,11 @@ private
       Name     : Unbounded_String;
       Min      : Scalar := Scalar'First;
       Max      : Scalar := Scalar'Last;
-      Value    : Scalar := 0.0;
       Terms    : Term_Vectors.Vector;
       Frozen   : Boolean := False;
+
+      Idx      : Var_Idx;
+      --  Index in the engine it belongs to
    end record;
    type Variable_Access is access all Variable'Class;
 
@@ -439,13 +474,13 @@ private
       Weight : Membership;
    end record;
 
-   type Var_Idx is new Positive;
    package Input_Variable_Vectors is new Ada.Containers.Vectors
       (Var_Idx, Input_Variable_Access);
    package Output_Variable_Vectors is new Ada.Containers.Vectors
       (Var_Idx, Output_Variable_Access);
 
-   type Rule_Weights is array (Rule_Idx range <>) of Membership;
+   type Membership_Array is array (Rule_Idx range <>) of Membership;
+   type Scalar_Array is array (Var_Idx range <>) of Scalar;
 
    type Antecedent_Details is record
       Fuzzy_Value : Fuzzy_Var_Idx := Term_Not_Found;
@@ -476,7 +511,7 @@ private
       And_Operator : Operator;
       Activation   : Activation_Method;
 
-      Weights : Rule_Weights (1 .. Rules_Count);
+      Weights : Membership_Array (1 .. Rules_Count);
       Left    : Antecedents (1 .. Rules_Count, 1 .. Input_Vars_Count);
       Right   : Consequents (1 .. Rules_Count, 1 .. Output_Vars_Count);
 
@@ -493,6 +528,10 @@ private
    --  where each of the "Term" is an index into the Vars array. This
    --  array contains the computed fuzzy values for the variables for each
    --  term. Each term also contains an optional Hedge.
+
+   type Variable_Values (Var_Count : Var_Idx) is record
+      Values : Scalar_Array (1 .. Var_Count);
+   end record;
 
    type Engine is tagged record
       Inputs  : Input_Variable_Vectors.Vector;

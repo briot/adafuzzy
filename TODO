@@ -16,10 +16,8 @@
 * visitors (for debug, GUI, ...)
 * Parser for .fcl files
 * Generate code (no need for malloc for instance)
-* Separate input and output values from variables
-  So that we can share the model among several objects
 * Make it work with singleton membership
-
+* Allow Hedge for output variables in rules
 
 Examples
 ========

@@ -408,18 +408,23 @@ package body Fuzzy is
    -- Set_Value --
    ---------------
 
-   procedure Set_Value (Self : in out Variable; Value : Scalar) is
+   procedure Set_Value
+      (Self   : Variable'Class;
+       Values : in out Variable_Values;
+       Value  : Scalar)
+   is
    begin
-      Self.Value := Value;
+      Values.Values (Self.Idx) := Value;
    end Set_Value;
 
    ---------------
    -- Get_Value --
    ---------------
 
-   function Get_Value (Self : Variable) return Scalar is
+   function Get_Value
+      (Self : Variable'Class; Values : Variable_Values) return Scalar is
    begin
-      return Self.Value;
+      return Values.Values (Self.Idx);
    end Get_Value;
 
    ---------------
@@ -590,10 +595,14 @@ package body Fuzzy is
    ------------
 
    procedure Freeze (Self : in out Engine'Class) is
-      Idx : Fuzzy_Var_Idx := Fuzzy_Var_Idx'First;
+      VIdx : Var_Idx := Var_Idx'First;
+      Idx  : Fuzzy_Var_Idx := Fuzzy_Var_Idx'First;
    begin
       for Var of Self.Inputs loop
          Var.Frozen := True;
+         Var.Idx := VIdx;
+         VIdx := VIdx + 1;
+
          for T of Var.Terms loop
             T.Idx := Idx;
             Idx := Idx + 1;
@@ -604,6 +613,8 @@ package body Fuzzy is
 
       for Var of Self.Outputs loop
          Var.Frozen := True;
+         Var.Idx := VIdx;
+         VIdx := VIdx + 1;
       end loop;
    end Freeze;
 
@@ -821,8 +832,8 @@ package body Fuzzy is
    -- Process --
    -------------
 
-   procedure Process (Self : Engine) is
-      Rule_Levels : Rule_Weights (1 .. Self.Total_Rules);
+   procedure Process (Self : Engine; Values : in out Variable_Values) is
+      Rule_Levels : Membership_Array (1 .. Self.Total_Rules);
       --  Activation level for each rules
 
       Vars : Fuzzy_Var_Values
@@ -851,7 +862,7 @@ package body Fuzzy is
          for V of Self.Inputs loop
             for T of V.Terms loop
                if T.In_Rules /= 0 then
-                  Vars (T.Idx) := T.Membership.Value (V.Value);
+                  Vars (T.Idx) := T.Membership.Value (V.Get_Value (Values));
                end if;
             end loop;
          end loop;
@@ -932,8 +943,10 @@ package body Fuzzy is
             end loop;
 
             Var := Self.Outputs (Output);
-            Var.Set_Value (Accumulated.Defuzzify
-               (Self.Defuzzification, Var.Min, Var.Max));
+            Var.Set_Value
+               (Values,
+                Accumulated.Defuzzify
+                   (Self.Defuzzification, Var.Min, Var.Max));
 
             Accumulated.Free;
          end loop;
@@ -951,7 +964,7 @@ package body Fuzzy is
             Increase_Indent (Me, "Process");
             for V of Self.Inputs loop
                Debug := V.Name & " value="
-                  & V.Value'Img & " fuzzy=";
+                  & V.Get_Value (Values)'Img & " fuzzy=";
                for T of V.Terms loop
                   Append (Debug, Vars (T.Idx)'Img & "/" & T.Name);
                end loop;
@@ -965,7 +978,8 @@ package body Fuzzy is
             Trace (Me, To_String (Debug));
 
             for V of Self.Outputs loop
-               Trace (Me, To_String (V.Name) & " value=" & V.Value'Img);
+               Trace (Me, To_String (V.Name)
+                      & " value=" & V.Get_Value (Values)'Img);
             end loop;
 
             Decrease_Indent (Me);
@@ -1047,5 +1061,25 @@ package body Fuzzy is
          Unchecked_Free (Self.Output);
       end if;
    end Free;
+
+   ----------------
+   -- Get_Values --
+   ----------------
+
+   function Get_Values (Self : Engine'Class) return Variable_Values is
+   begin
+      return Variable_Values'
+         (Var_Count => Var_Idx (Self.Number_Of_Variables),
+          Values    => (others => 0.0));
+   end Get_Values;
+
+   -------------------------
+   -- Number_Of_Variables --
+   -------------------------
+
+   function Number_Of_Variables (Self : Engine'Class) return Natural is
+   begin
+      return Natural (Self.Inputs.Length + Self.Outputs.Length);
+   end Number_Of_Variables;
 
 end Fuzzy;

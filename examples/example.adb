@@ -45,36 +45,43 @@ begin
 
    Trace (Me, Eng);
 
-   Temperature.Set_Value (14.0);
+   declare
+      Values : Variable_Values := Eng.Get_Values;
+   begin
+      Temperature.Set_Value (Values, 14.0);
 
-   Till_Next_Nudge := 30;
-   Reset (Float_Gen);
+      Till_Next_Nudge := 30;
+      Reset (Float_Gen);
 
-   for Iterate in 1 .. 100_000 loop
-      Eng.Process;
-      Put_Line ("Temp=" & Temperature.Get_Value'Img
-         & "  Power=>" & Power.Get_Value'Img);
+      for Iterate in 1 .. 100_000 loop
+         Eng.Process (Values);
+         Put_Line ("Temp=" & Temperature.Get_Value (Values)'Img
+            & "  Power=>" & Power.Get_Value (Values)'Img);
 
-      --  Put_Line ("-----------------------------------------");
-      --  Put_Line ("Temperature=" & Temperature.Get_Value'Img);
-      --  Put_Line ("Result => Power is set to" & Power.Get_Value'Img);
+         --  Put_Line ("-----------------------------------------");
+         --  Put_Line ("Temperature=" & Temperature.Get_Value'Img);
+         --  Put_Line ("Result => Power is set to" & Power.Get_Value'Img);
 
-      --  Simulate the effect of the power
-      --  100% power => +0.5 degree   (radiators full on)
-      --  0% power   => -0.5 degree   (cold from outside sipping in)
-      Temperature.Set_Value
-         (Temperature.Get_Value +
-          (Power.Get_Value - 50.0) * 0.01);
-
-      --  From time to time, nudge at random to make things more interesting
-      Till_Next_Nudge := Till_Next_Nudge - 1;
-      if Till_Next_Nudge = 0 then
-         Put_Line ("Nudge temperature");
-         Till_Next_Nudge := 30;
+         --  Simulate the effect of the power
+         --  100% power => +0.5 degree   (radiators full on)
+         --  0% power   => -0.5 degree   (cold from outside sipping in)
          Temperature.Set_Value
-            (Temperature.Get_Value + (Random (Float_Gen) - 0.5) * 3.0);
-      end if;
-   end loop;
+            (Values,
+             Temperature.Get_Value (Values) +
+             (Power.Get_Value (Values) - 50.0) * 0.01);
+
+         --  From time to time, nudge at random to make things more interesting
+         Till_Next_Nudge := Till_Next_Nudge - 1;
+         if Till_Next_Nudge = 0 then
+            Put_Line ("Nudge temperature");
+            Till_Next_Nudge := 30;
+            Temperature.Set_Value
+               (Values,
+                Temperature.Get_Value (Values)
+                + (Random (Float_Gen) - 0.5) * 3.0);
+         end if;
+      end loop;
+   end;
 
    Free (Eng);
    GNATCOLL.Traces.Finalize;
