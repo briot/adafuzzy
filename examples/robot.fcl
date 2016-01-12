@@ -1,6 +1,7 @@
 FUNCTION_BLOCK robot
 
 VAR_INPUT
+  (* Name of variables must be synchronized with Ada code *)
   Front     : REAL;    (* RANGE (0.0 .. 1000.0); *)
   Right     : REAL;    (* RANGE (0.0 .. 1000.0); *)
   Left      : REAL;    (* RANGE (0.0 .. 1000.0); *)
@@ -9,29 +10,30 @@ VAR_INPUT
 END_VAR
 
 VAR_OUTPUT
+  (* Name of variables must be synchronized with Ada code *)
   Speed      : REAL;
   AngleSpeed : REAL;
 END_VAR
 
 FUZZIFY Front
-  TERM O_Very_Close := (  0.0, 1.0) ( 50.0, 0.0);
-  TERM O_Close      := (100.0, 1.0) (400.0, 0.0);
-  TERM O_Medium     := (190.0, 0.0) (200.0, 1.0) (300.0, 0.0);
-  TERM O_Far        := (100.0, 0.0) (700.0, 1.0);
+  TERM O_Very_Close := (  0.0, 1.0) ( 20.0, 0.0);
+  TERM O_Close      := ( 50.0, 1.0) (100.0, 0.0);
+  TERM O_Medium     := ( 80.0, 0.0) (200.0, 1.0) (300.0, 0.0);
+  TERM O_Far        := (400.0, 0.0) (700.0, 1.0);
 END_FUZZIFY
 
 FUZZIFY Right
-  TERM O_Very_Close := (  0.0, 1.0) ( 60.0, 0.0);
-  TERM O_Close      := ( 30.0, 1.0) (100.0, 0.0);
+  TERM O_Very_Close := (  0.0, 1.0) ( 20.0, 0.0);
+  TERM O_Close      := ( 50.0, 1.0) (100.0, 0.0);
   TERM O_Medium     := ( 80.0, 0.0) (200.0, 1.0) (300.0, 0.0);
-  TERM O_Far        := (100.0, 0.0) (700.0, 1.0);
+  TERM O_Far        := (400.0, 0.0) (700.0, 1.0);
 END_FUZZIFY
 
 FUZZIFY Left
-  TERM O_Very_Close  := (  0.0, 1.0) ( 60.0, 0.0);
-  TERM O_Close       := ( 30.0, 1.0) (100.0, 0.0);
-  TERM O_Medium      := ( 80.0, 0.0) (200.0, 1.0) (300.0, 0.0);
-  TERM O_Far         := (100.0, 0.0) (700.0, 1.0);
+  TERM O_Very_Close := (  0.0, 1.0) ( 20.0, 0.0);
+  TERM O_Close      := ( 50.0, 1.0) (100.0, 0.0);
+  TERM O_Medium     := ( 80.0, 0.0) (200.0, 1.0) (300.0, 0.0);
+  TERM O_Far        := (400.0, 0.0) (700.0, 1.0);
 END_FUZZIFY
 
 FUZZIFY GoalDist
@@ -66,15 +68,30 @@ DEFUZZIFY AngleSpeed
 END_DEFUZZIFY
 
 RULEBLOCK speed
-  RULE 1: IF GoalAngle IS G_Ahead  AND Front IS O_Far  THEN Speed IS Medium;
+  (* The farther the goal, the faster we should go to it *)
+  RULE 1: IF Front IS O_Far    THEN Speed IS Fast;
   RULE 2: IF Front IS O_Medium THEN Speed IS Medium;
   RULE 3: IF Front IS O_Close  THEN Speed IS Slow;
+
+  (* Slow down to make the turns *)
+  RULE 4: IF GoalAngle IS G_Left  THEN Speed IS Slow;
+  RULE 5: IF GoalAngle IS G_Right THEN Speed IS Slow;
 END_RULEBLOCK
 
 RULEBLOCK angle
+  (* Go towards the goal *)
   RULE 1: IF GoalAngle IS G_Left  THEN AngleSpeed IS Left;
   RULE 2: IF GoalAngle IS G_Ahead THEN AngleSpeed IS Forward;
   RULE 3: IF GoalAngle IS G_Right THEN AngleSpeed IS Right;
+
+  (* Turn to avoid obstacles *)
+  RULE 7: IF Left IS O_Close       THEN AngleSpeed IS Right;
+  RULE 8: IF Left IS O_Medium      THEN AngleSpeed IS Right_Slight;
+
+  RULE 9:  IF Right IS O_Close      THEN AngleSpeed IS Left;
+  RULE 10: IF Right IS O_Medium     THEN AngleSpeed IS Left_Slight;
+
+  (*
   RULE 4: IF Front IS O_Close
             AND Left IS NOT O_Close
             AND GoalAngle IS G_Left
@@ -85,10 +102,9 @@ RULEBLOCK angle
             AND GoalAngle IS G_Right
             AND GoalDist IS NOT G_Close
             THEN AngleSpeed IS Right;
-  RULE 7: IF Left IS O_Close       THEN AngleSpeed IS Right;
-  RULE 8: IF Right IS O_Close      THEN AngleSpeed IS Left;
   RULE 9: IF Right IS O_Very_Close THEN AngleSpeed IS Full_Left;
   RULE 10: IF Left IS O_Very_Close THEN AngleSpeed IS Full_Right;
+  *)
 END_RULEBLOCK
 
 END_FUNCTION_BLOCK

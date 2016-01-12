@@ -1,0 +1,11 @@
+with "../shared";
+with "../src/fuzzy";
+
+project Examples is
+   for Main use ("example.adb");
+   for Source_Files use ("example.adb");
+   for Object_Dir use "obj";
+   package Compiler renames Shared.Compiler;
+   package Binder renames Shared.Binder;
+   package Linker renames Shared.Linker;
+end Examples;

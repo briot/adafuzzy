@@ -187,6 +187,7 @@ package body Fuzzy.FCL is
       Read_Variable (Eng, Str, Index, Var, Input => True);
 
       loop
+         Skip_Comments (Str, Index);
          if Starts_With (Str (Index .. Str'Last), "END_FUZZIFY") then
             Index := Line_End (Str, Index) + 1;
             return;
@@ -224,6 +225,7 @@ package body Fuzzy.FCL is
       V := Output_Variable_Access (Var);
 
       loop
+         Skip_Comments (Str, Index);
          if Starts_With (Str (Index .. Str'Last), "END_DEFUZZIFY") then
             Index := Line_End (Str, Index) + 1;
             return;
@@ -563,6 +565,7 @@ package body Fuzzy.FCL is
       Var       : Variable_Access;
    begin
       loop
+         Skip_Comments (Str, Index);
          Skip_Blanks (Str, Index);
 
          if Starts_With (Str (Index .. Str'Last), "END_VAR") then

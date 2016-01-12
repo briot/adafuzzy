@@ -1,0 +1,12 @@
+with "gtkada";
+with "../shared";
+with "../src/fuzzy";
+
+project GUIExamples is
+   for Main use ("robot.adb");
+   for Source_Files use ("robot.adb");
+   for Object_Dir use "obj";
+   package Compiler renames Shared.Compiler;
+   package Binder renames Shared.Binder;
+   package Linker renames Shared.Linker;
+end GUIExamples;
