@@ -14,10 +14,12 @@
 * Lookup tables for memberships, especially for centroids
 * faster centroid for predefined membership forms
 * visitors (for debug, GUI, ...)
-* Parser for .fcl files
 * Generate code (no need for malloc for instance)
 * Make it work with singleton membership
+  fcl uses a special COGS defuzzify function for this
 * Allow Hedge for output variables in rules
+* Support for OR expressions when parsing fcl
+* Rules should either all OR or all AND for their antecedents
 
 Examples
 ========

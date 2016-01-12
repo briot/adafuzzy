@@ -675,8 +675,8 @@ package body Fuzzy is
       (Self  : in out Engine;
        Name  : String;
        Rules : Rule_Array;
-       And_Operator : Operator := And_As_Min'Access;
-       Activation   : Activation_Method := Activation_Min)
+       Op    : Operators := Operators_Min_Max;
+       Activation : Activation_Method := Activation_Min)
    is
       use Input_Variable_Vectors;
       use Output_Variable_Vectors;
@@ -704,7 +704,7 @@ package body Fuzzy is
       Self.Rules := Tmp;
 
       Tmp.Name         := To_Unbounded_String (Name);
-      Tmp.And_Operator := And_Operator;
+      Tmp.Op           := Op;
       Tmp.Activation   := Activation;
 
       --  Process all rules
@@ -903,7 +903,7 @@ package body Fuzzy is
                            Tmp := B.Left (R, Input).Hedge (Tmp);
                         end if;
 
-                        M := B.And_Operator (M, Tmp);
+                        M := B.Op.And_Operator (M, Tmp);
                      end if;
                   end loop;
 

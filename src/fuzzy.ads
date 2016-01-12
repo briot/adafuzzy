@@ -279,30 +279,18 @@ package Fuzzy is
    --  requirements:
    --     * must lead the same result as standard operators on crisp
    --       values (0.0 and 1.0)
-   --
-   --  However, they can be defined multiple ways. Each of the following
-   --  definitions are pairs that match each other.
 
-   type Operator is access function (V1, V2 : Membership) return Membership;
+   type Operators is private;
 
-   function And_As_Min (V1, V2 : Membership) return Membership
-      is (Membership'Min (V1, V2)) with Inline;
-   function Or_As_Max  (V1, V2 : Membership) return Membership
-      is (Membership'Max (V1, V2)) with Inline;
+   Operators_Min_Max : constant Operators;
    --  V1 AND V2   is implemented as   min (V1, V2)
    --  V1 OR V2    is implemented as   max (V1, V2);
 
-   function And_As_Multiply (V1, V2 : Membership) return Membership
-      is (V1 * V2) with Inline;
-   function Or_As_Sum      (V1, V2 : Membership) return Membership
-      is (V1 + V2 - V1 * V2) with Inline;
+   Operators_Multiply : constant Operators;
    --  V1 AND V2   is implemented as   V1 * V2
    --  V1 OR V2    is implemented as   V1 + V2 - V1 * V2
 
-   function And_As_Vdiff   (V1, V2 : Membership) return Membership
-      is (Membership'Max (0.0, V1 + V2 - 1.0)) with Inline;
-   function Or_As_Vsum     (V1, V2 : Membership) return Membership
-      is (Membership'Min (1.0, V1 + V2)) with Inline;
+   Operators_Diff : constant Operators;
    --  V1 AND V2   is implemented as   max (0, V1 + V2 - 1)
    --  V1 OR V2    is implemented as   min (1, V1 + V2)
 
@@ -340,7 +328,7 @@ package Fuzzy is
       (Self         : in out Engine;
        Name         : String;
        Rules        : Rule_Array;
-       And_Operator : Operator := And_As_Min'Access;
+       Op           : Operators := Operators_Min_Max;
        Activation   : Activation_Method := Activation_Min);
    --  Create a new rule block.
    --  No input or output variable can be added to the engine after this point
@@ -450,6 +438,41 @@ private
 
    package Term_Vectors is new Ada.Containers.Vectors (Positive, Term);
 
+   type Operator_Func is
+      access function (V1, V2 : Membership) return Membership;
+   type Operators is record
+      And_Operator : not null Operator_Func;
+      Or_Operator  : not null Operator_Func;
+   end record;
+
+   function And_As_Min (V1, V2 : Membership) return Membership
+      is (Membership'Min (V1, V2)) with Inline;
+   function Or_As_Max  (V1, V2 : Membership) return Membership
+      is (Membership'Max (V1, V2)) with Inline;
+   --  V1 AND V2   is implemented as   min (V1, V2)
+   --  V1 OR V2    is implemented as   max (V1, V2);
+
+   function And_As_Multiply (V1, V2 : Membership) return Membership
+      is (V1 * V2) with Inline;
+   function Or_As_Sum      (V1, V2 : Membership) return Membership
+      is (V1 + V2 - V1 * V2) with Inline;
+   --  V1 AND V2   is implemented as   V1 * V2
+   --  V1 OR V2    is implemented as   V1 + V2 - V1 * V2
+
+   function And_As_Vdiff   (V1, V2 : Membership) return Membership
+      is (Membership'Max (0.0, V1 + V2 - 1.0)) with Inline;
+   function Or_As_Vsum     (V1, V2 : Membership) return Membership
+      is (Membership'Min (1.0, V1 + V2)) with Inline;
+   --  V1 AND V2   is implemented as   max (0, V1 + V2 - 1)
+   --  V1 OR V2    is implemented as   min (1, V1 + V2)
+
+   Operators_Min_Max : constant Operators :=
+      (And_Operator => And_As_Min'Access, Or_Operator  => Or_As_Max'Access);
+   Operators_Multiply : constant Operators :=
+      (And_As_Multiply'Access, Or_As_Sum'Access);
+   Operators_Diff     : constant Operators :=
+      (And_As_Vdiff'Access, Or_As_Vsum'Access);
+
    type Variable is abstract tagged record
       Name     : Unbounded_String;
       Min      : Scalar := Scalar'First;
@@ -525,7 +548,7 @@ private
       Enabled : Boolean := True;
       --  Whether this rule block should be computed
 
-      And_Operator : Operator;
+      Op           : Operators := Operators_Min_Max;
       Activation   : Activation_Method;
 
       Weights : Membership_Array (1 .. Rules_Count);

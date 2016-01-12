@@ -312,7 +312,7 @@ package body Fuzzy.FCL is
       Rules : Rule_Array (1 .. 1024) := (others => <>);
       Next_Rule : Integer := Rules'First;
 
-      And_Operator : Operator := And_As_Min'Access;
+      Op           : Operators := Operators_Min_Max;
       Activation   : Activation_Method := Activation_Min;
 
    begin
@@ -329,7 +329,7 @@ package body Fuzzy.FCL is
             Eng.Add_Rule_Block
                (Name         => Str (Block_Name_Start .. Block_Name_End),
                 Rules        => Rules (Rules'First .. Next_Rule - 1),
-                And_Operator => And_Operator,
+                Op           => Op,
                 Activation   => Activation);
             return;
 
@@ -338,11 +338,11 @@ package body Fuzzy.FCL is
             Read_Char (Str, Index, ':');
             Parse_Word (Str, Index, Last);
             if Str (Index .. Last) = "MIN" then
-               And_Operator := And_As_Min'Access;
+               Op := Operators_Min_Max;
             elsif Str (Index .. Last) = "PROD" then
-               And_Operator := And_As_Multiply'Access;
+               Op := Operators_Multiply;
             elsif Str (Index .. Last) = "BDIF" then
-               And_Operator := And_As_Vdiff'Access;
+               Op := Operators_Diff;
             else
                raise Parse_Error with
                   "Invalid AND operator """ & Str (Index .. Last) & '"';
